@@ -1,0 +1,187 @@
+# https://github.com/confluentinc/cp-all-in-one/blob/7.0.0-post/cp-all-in-one/docker-compose.yml
+
+version: "3"
+
+services:
+
+  zookeeper:
+    hostname: zookeeper
+    container_name: "zookeeper"
+    image: confluentinc/cp-zookeeper:latest
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: "2181"
+      ZOOKEEPER_TICK_TIME: "2000"
+      ALLOW_ANONYMOUS_LOGIN: "yes"
+    networks:
+      - mynetwork
+
+  kafka:
+    hostname: kafka
+    container_name: "kafka"
+    image: confluentinc/cp-enterprise-kafka:latest
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+      - "9101:9101"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_METRIC_REPORTERS: io.confluent.metrics.reporter.ConfluentMetricsReporter
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_CONFLUENT_LICENSE_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_CONFLUENT_BALANCER_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_JMX_PORT: 9101
+      KAFKA_JMX_HOSTNAME: localhost
+      KAFKA_CONFLUENT_SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      CONFLUENT_METRICS_REPORTER_BOOTSTRAP_SERVERS: kafka:29092
+      CONFLUENT_METRICS_REPORTER_TOPIC_REPLICAS: 1
+      CONFLUENT_METRICS_ENABLE: 'true'
+      CONFLUENT_SUPPORT_CUSTOMER_ID: 'anonymous'
+    networks:
+      - mynetwork
+
+  schema-registry:
+    hostname: schema-registry
+    container_name: "schema-registry"
+    image: confluentinc/cp-schema-registry:latest
+    depends_on:
+      - zookeeper
+      - kafka
+    ports:
+      - "8081:8081"
+    environment:
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: 'kafka:29092'
+      SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
+    networks:
+      - mynetwork
+
+  kafka-connect:
+    hostname: kafka-connect
+    container_name: "kafka-connect"
+    image: my-kafka-connect:0.0.1
+    depends_on:
+      - kafka
+      - schema-registry
+    ports:
+      - "8083:8083"
+    environment:
+      CONNECT_BOOTSTRAP_SERVERS: 'kafka:29092'
+      CONNECT_REST_ADVERTISED_HOST_NAME: kafka-connect
+      CONNECT_REST_PORT: 8083
+      CONNECT_GROUP_ID: kafka-connect
+      CONNECT_CONFIG_STORAGE_TOPIC: kc-config
+      CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_OFFSET_FLUSH_INTERVAL_MS: 10000
+      CONNECT_OFFSET_STORAGE_TOPIC: kc-offset
+      CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_STATUS_STORAGE_TOPIC: kc-status
+      CONNECT_STATUS_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_KEY_CONVERTER: org.apache.kafka.connect.storage.StringConverter
+      CONNECT_VALUE_CONVERTER: io.confluent.connect.avro.AvroConverter
+      CONNECT_VALUE_CONVERTER_SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      CLASSPATH: /usr/share/java/monitoring-interceptors/monitoring-interceptors-7.0.0.jar
+      CONNECT_PRODUCER_INTERCEPTOR_CLASSES: "io.confluent.monitoring.clients.interceptor.MonitoringProducerInterceptor"
+      CONNECT_CONSUMER_INTERCEPTOR_CLASSES: "io.confluent.monitoring.clients.interceptor.MonitoringConsumerInterceptor"
+      CONNECT_PLUGIN_PATH: "/usr/share/java,/usr/share/confluent-hub-components"
+      CONNECT_LOG4J_LOGGERS: org.apache.zookeeper=ERROR,org.I0Itec.zkclient=ERROR,org.reflections=ERROR
+    networks:
+      - mynetwork
+    volumes:
+      - /home/pat/OCR/projet5/mnt/:/mnt/
+
+  mongodb:
+    hostname: mongodb
+    container_name: 'mongodb'
+    image: 'mongo:latest'
+    ports:
+      - '27017:27017'
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=root
+      - MONGO_INITDB_ROOT_PASSWORD=123
+    networks:
+      - mynetwork
+
+  namenode:
+    hostname: namenode
+    container_name: "namenode"
+    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
+    restart: always
+    ports:
+      - 9870:9870
+      - 9000:9000
+    environment:
+      - CLUSTER_NAME=ocr
+    volumes:
+      - namenode:/hadoop/dfs/name
+      - /home/pat/OCR/projet5/mnt/:/mnt/
+    env_file:
+      - ./hadoop.env
+    networks:
+      - mynetwork
+
+  datanode1:
+    hostname: datanode1
+    container_name: "datanode1"
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    depends_on:
+      - namenode
+    restart: always
+    environment:
+      SERVICE_PRECONDITION: "namenode:9870"
+    volumes:
+      - datanode1:/hadoop/dfs/data1
+    env_file:
+      - ./hadoop.env
+    networks:
+      - mynetwork
+
+  datanode2:
+    hostname: datanode2
+    container_name: "datanode2"
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    depends_on:
+      - namenode
+    restart: always
+    environment:
+      SERVICE_PRECONDITION: "namenode:9870"
+    volumes:
+      - datanode2:/hadoop/dfs/data2
+    env_file:
+      - ./hadoop.env
+    networks:
+      - mynetwork
+
+  datanode3:
+    hostname: datanode3
+    container_name: "datanode3"
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    depends_on:
+      - namenode
+    restart: always
+    environment:
+      SERVICE_PRECONDITION: "namenode:9870"
+    volumes:
+      - datanode3:/hadoop/dfs/data3
+    env_file:
+      - ./hadoop.env
+    networks:
+      - mynetwork
+
+volumes:
+  namenode:
+  datanode1:
+  datanode2:
+  datanode3:
+
+networks:
+  mynetwork:
+    driver: bridge
